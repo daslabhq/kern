@@ -23,19 +23,19 @@ import { join, dirname, basename } from "path";
 import type { Identity } from "./identity.js";
 
 export interface VaultOpts {
-    /** Root vault directory. Default: process.env.KORN_VAULT_DIR ?? "./secrets" */
+    /** Root vault directory. Default: KERN_VAULT_DIR env var ?? "./secrets" */
     dir?: string;
     /** Identity used to decrypt. */
     identity: Identity;
 }
 
 export class Vault {
-    private dir: string;
+    readonly dir: string;
     private id: Identity;
     private cache = new Map<string, Uint8Array>();
 
     constructor(opts: VaultOpts) {
-        this.dir = opts.dir ?? process.env.KORN_VAULT_DIR ?? "./secrets";
+        this.dir = opts.dir ?? process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR ?? "./secrets";
         this.id = opts.identity;
     }
 

@@ -35,20 +35,18 @@ export async function load(privateKey: string): Promise<Identity> {
 }
 
 /**
- * Convenience: load from common host locations in order:
- *   1. process.env[opts.envVar]                (default: KORN_AGE_KEY)
- *   2. file at opts.filePath                   (default: ~/.kern/key)
- * Throws if neither source is set.
- *
- * Used by both the Daslab server (env var on Render) and local dev (~/.kern/key).
+ * Load from common host locations in order:
+ *   1. KERN_AGE_KEY env var (or custom opts.envVar)
+ *   2. KORN_AGE_KEY env var (legacy alias)
+ *   3. file at ~/.kern/key (or custom opts.filePath)
  */
 export async function loadFromHost(opts: {
     envVar?: string;
     filePath?: string;
 } = {}): Promise<Identity> {
-    const envVar = opts.envVar ?? "KORN_AGE_KEY";
+    const envVar = opts.envVar ?? "KERN_AGE_KEY";
 
-    const fromEnv = process.env[envVar];
+    const fromEnv = process.env[envVar] || process.env["KORN_AGE_KEY"];
     if (fromEnv && fromEnv.trim()) return load(fromEnv);
 
     const home = process.env.HOME || process.env.USERPROFILE;

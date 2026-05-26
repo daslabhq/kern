@@ -34,6 +34,8 @@ async function main() {
         case "secret":
         case "secrets":  return cmdSecret(sub, args.slice(2));
         case "recipients": return cmdRecipients();
+        case "mcp":      return cmdMcp();
+        case "serve":    return cmdServe();
         default:
             console.error(`unknown command: ${cmd}`);
             help();
@@ -42,7 +44,9 @@ async function main() {
 }
 
 function help() {
-    process.stdout.write(`kern v0.1 — identity + secrets vault\n\n` +
+    process.stdout.write(`kern v0.2 — the agent credential manager\n\n` +
+`  kern mcp                        start MCP server (for Claude Code, Cursor, etc.)\n` +
+`  kern serve                      start local form server only\n\n` +
 `  kern identity init [--save PATH]\n` +
 `  kern identity pubkey\n\n` +
 `  kern secret add NAME\n` +
@@ -52,7 +56,27 @@ function help() {
 `  kern secret delete NAME\n` +
 `  kern secret rewrap\n\n` +
 `  kern recipients\n\n` +
-`env: KORN_AGE_KEY (private key)  KORN_VAULT_DIR (default ./secrets)\n`);
+`env: KERN_AGE_KEY (private key)  KERN_VAULT_DIR (default ./secrets)\n`);
+}
+
+async function cmdMcp() {
+    const { startMcpServer } = await import("../src/mcp.js");
+    await startMcpServer();
+}
+
+async function cmdServe() {
+    const { loadFromHost } = await import("../src/identity.js");
+    const { Vault } = await import("../src/vault.js");
+    const { startLocalServer } = await import("../src/serve.js");
+    const identity = await loadFromHost();
+    const dir = process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR;
+    const vault = new Vault({ identity, ...(dir ? { dir } : {}) });
+    const srv = startLocalServer({
+        vault,
+        onAdd: (name) => console.log(`✓ encrypted: ${name}`),
+    });
+    console.log(`kern form server at ${srv.url}`);
+    console.log(`Open ${srv.url}/add?name=YOUR_SECRET to add a credential`);
 }
 
 async function cmdIdentity(sub: string | undefined, rest: string[]) {

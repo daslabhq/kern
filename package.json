@@ -1,7 +1,7 @@
 {
   "name": "@daslab/kern",
-  "version": "0.1.0",
-  "description": "Kern — embeddable identity + secrets + capabilities for agent platforms. TypeScript SDK.",
+  "version": "0.2.0",
+  "description": "The agent credential manager. Agents use APIs without ever seeing the keys.",
   "type": "module",
   "main": "src/index.ts",
   "module": "src/index.ts",
@@ -9,13 +9,15 @@
   "exports": {
     ".":          "./src/index.ts",
     "./vault":    "./src/vault.ts",
-    "./identity": "./src/identity.ts"
+    "./identity": "./src/identity.ts",
+    "./serve":    "./src/serve.ts",
+    "./mcp":      "./src/mcp.ts"
   },
   "bin": {
     "kern": "./bin/kern.ts"
   },
   "files": ["src", "bin", "README.md", "LICENSE"],
-  "keywords": ["kern", "agent", "secrets", "age", "vault", "identity", "encryption"],
+  "keywords": ["kern", "agent", "secrets", "age", "vault", "identity", "encryption", "mcp", "proxy", "credentials"],
   "license": "MIT",
   "dependencies": {
     "age-encryption": "^0.3.0"
