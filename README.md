@@ -1,5 +1,7 @@
 # kern
 
+[![tests](https://github.com/daslabhq/kern/actions/workflows/test.yml/badge.svg)](https://github.com/daslabhq/kern/actions/workflows/test.yml)
+
 The agent wallet. Hold credentials — agents use them without seeing them.
 
 ```bash
@@ -169,6 +171,21 @@ kern secret rewrap
 kern secret rotate tokens/github  # rotate what they had access to
 ```
 
+## Machine payments
+
+The same proxy that protects API keys protects payment credentials. An agent that purchases compute, calls paid APIs, or manages subscriptions needs payment keys — but shouldn't hold them.
+
+```typescript
+// agent charges a customer — never sees sk_live_*
+const resp = await wallet.fetch("tokens/stripe", "https://api.stripe.com/v1/payment_intents", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: "amount=2000&currency=usd&automatic_payment_methods[enabled]=true",
+});
+```
+
+Works with [Stripe MPP](https://docs.stripe.com/payments/machine/mpp) for machine-to-machine payments and any API that takes Bearer auth. [x402](https://www.x402.org/) support — auto-negotiating `402 Payment Required` responses — is on the roadmap.
+
 ## CLI
 
 ```bash
@@ -186,7 +203,7 @@ kern fetch SECRET URL [OPTIONS]    # proxy request (credential stays in wallet)
   --method POST                    # HTTP method (default GET)
   --body '{"key": "val"}'          # request body
 
-kern recipients list               # show recipients
+kern recipients                    # list all recipients
 kern recipients remove KEY         # remove from all folders
 
 kern mcp                           # start MCP server

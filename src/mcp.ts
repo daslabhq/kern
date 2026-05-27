@@ -4,6 +4,7 @@
 //   kern_status    — wallet health (credential count, recipient count)
 //   kern_list      — list credential names (no values)
 //   kern_fetch     — proxy HTTP request (credential stays in wallet)
+//   kern_get       — decrypt and return a credential (direct mode)
 //   kern_add       — add a credential via browser form (never through LLM)
 //   kern_rotate    — rotate a credential via browser form
 //   kern_remove    — remove a credential
@@ -102,6 +103,31 @@ export async function startMcpServer() {
           const text = await resp.text();
           respond(undefined, {
             content: [{ type: "text", text: `${resp.status} ${resp.statusText}\n\n${text}` }],
+          });
+        } catch (e: any) {
+          respond(undefined, {
+            content: [{ type: "text", text: `Error: ${e.message}` }],
+            isError: true,
+          });
+        }
+      },
+    },
+    {
+      name: "kern_get",
+      description: "Decrypt and return a credential value (direct mode). Use kern_fetch instead when possible — it keeps the credential in the wallet.",
+      inputSchema: {
+        type: "object",
+        required: ["name"],
+        properties: {
+          name: { type: "string", description: "Credential name (e.g. tokens/openai)" },
+        },
+      },
+      handler: async (args, respond) => {
+        const name = args.name as string;
+        try {
+          const value = await wallet.get(name);
+          respond(undefined, {
+            content: [{ type: "text", text: value }],
           });
         } catch (e: any) {
           respond(undefined, {

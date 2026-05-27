@@ -2,7 +2,7 @@
 // kern CLI — the agent wallet
 
 import { generateIdentity, loadIdentityFromHost, openVault, openWallet } from "../src/index.js";
-import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
 
@@ -16,7 +16,7 @@ async function main() {
         case "identity": return cmdIdentity(sub, args.slice(2));
         case "secret":
         case "secrets":  return cmdSecret(sub, args.slice(2));
-        case "recipients": return cmdRecipients();
+        case "recipients": return cmdRecipients(sub, args.slice(2));
         case "fetch":    return cmdFetch(args.slice(1));
         case "mcp":      return cmdMcp();
         case "serve":    return cmdServe();
@@ -40,7 +40,8 @@ function help() {
 `  kern secret delete NAME\n` +
 `  kern secret rewrap\n\n` +
 `  kern fetch SECRET URL [--method METHOD] [--body BODY]\n\n` +
-`  kern recipients\n\n` +
+`  kern recipients                 list all recipients\n` +
+`  kern recipients remove KEY      remove from all folders\n\n` +
 `env: KERN_AGE_KEY (private key)  KERN_VAULT_DIR (default ./secrets)\n`);
 }
 
@@ -147,14 +148,57 @@ async function cmdFetch(rest: string[]) {
     process.exit(resp.ok ? 0 : 1);
 }
 
-function cmdRecipients() {
+function cmdRecipients(sub?: string, rest?: string[]) {
     const dir = process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR ?? "./secrets";
-    const file = join(dir, ".recipients");
-    if (!existsSync(file)) {
-        console.error(`no ${file} — create it with one age pubkey per line`);
+
+    if (sub === "remove") {
+        const key = rest?.[0];
+        if (!key) { console.error("usage: kern recipients remove KEY"); process.exit(1); }
+        let removed = 0;
+        const walk = (d: string) => {
+            const file = join(d, ".recipients");
+            if (existsSync(file)) {
+                const lines = readFileSync(file, "utf8").split("\n");
+                const filtered = lines.filter(l => l.trim() !== key);
+                if (filtered.length < lines.length) {
+                    writeFileSync(file, filtered.join("\n"));
+                    removed++;
+                }
+            }
+            if (!existsSync(d)) return;
+            for (const ent of readdirSync(d)) {
+                if (ent.startsWith(".")) continue;
+                const full = join(d, ent);
+                if (statSync(full).isDirectory()) walk(full);
+            }
+        };
+        walk(dir);
+        if (removed) console.log(`✓ removed from ${removed} .recipients file${removed > 1 ? "s" : ""}`);
+        else console.log(`key not found in any .recipients file`);
+        return;
+    }
+
+    if (!existsSync(dir)) {
+        console.error(`no vault at ${dir}`);
         process.exit(1);
     }
-    process.stdout.write(readFileSync(file, "utf8"));
+    const walk = (d: string, prefix: string) => {
+        const file = join(d, ".recipients");
+        if (existsSync(file)) {
+            const keys = readFileSync(file, "utf8")
+                .split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+            if (keys.length) {
+                console.log(`${prefix || "."}:`);
+                for (const k of keys) console.log(`  ${k}`);
+            }
+        }
+        for (const ent of readdirSync(d)) {
+            if (ent.startsWith(".")) continue;
+            const full = join(d, ent);
+            if (statSync(full).isDirectory()) walk(full, prefix ? `${prefix}/${ent}` : ent);
+        }
+    };
+    walk(dir, "");
 }
 
 async function readSecretInput(prompt: string): Promise<string> {
