@@ -1,2 +1,4 @@
 node_modules/
 .smoke-tmp/
+.wallet-test-tmp/
+.serve-test-tmp/

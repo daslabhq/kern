@@ -1,24 +1,7 @@
 #!/usr/bin/env bun
-// kern CLI — v0.1
-//
-// Commands:
-//   kern identity init [--save ~/.kern/key]   generate an age key, write to file
-//   kern identity pubkey                       print the public recipient
-//
-//   kern secret add NAME                       prompt for value, encrypt, write
-//   kern secret get NAME                       print plaintext (machine consumption)
-//   kern secret list                           tree of secret names
-//   kern secret rotate NAME                    same as add, but with rotation log
-//   kern secret delete NAME
-//
-//   kern secret rewrap                         re-encrypt all secrets to current .recipients
-//   kern recipients                            print the active recipients
-//
-// Env:
-//   KORN_AGE_KEY        the private key (AGE-SECRET-KEY-1...)
-//   KORN_VAULT_DIR      vault root (default ./secrets)
+// kern CLI — the agent wallet
 
-import { generateIdentity, loadIdentityFromHost, openVault } from "../src/index.js";
+import { generateIdentity, loadIdentityFromHost, openVault, openWallet } from "../src/index.js";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { homedir } from "os";
@@ -34,6 +17,7 @@ async function main() {
         case "secret":
         case "secrets":  return cmdSecret(sub, args.slice(2));
         case "recipients": return cmdRecipients();
+        case "fetch":    return cmdFetch(args.slice(1));
         case "mcp":      return cmdMcp();
         case "serve":    return cmdServe();
         default:
@@ -44,9 +28,9 @@ async function main() {
 }
 
 function help() {
-    process.stdout.write(`kern v0.2 — the agent credential manager\n\n` +
+    process.stdout.write(`kern v0.2 — the agent wallet\n\n` +
 `  kern mcp                        start MCP server (for Claude Code, Cursor, etc.)\n` +
-`  kern serve                      start local form server only\n\n` +
+`  kern serve                      start local credential form\n\n` +
 `  kern identity init [--save PATH]\n` +
 `  kern identity pubkey\n\n` +
 `  kern secret add NAME\n` +
@@ -55,6 +39,7 @@ function help() {
 `  kern secret rotate NAME\n` +
 `  kern secret delete NAME\n` +
 `  kern secret rewrap\n\n` +
+`  kern fetch SECRET URL [--method METHOD] [--body BODY]\n\n` +
 `  kern recipients\n\n` +
 `env: KERN_AGE_KEY (private key)  KERN_VAULT_DIR (default ./secrets)\n`);
 }
@@ -66,16 +51,16 @@ async function cmdMcp() {
 
 async function cmdServe() {
     const { loadFromHost } = await import("../src/identity.js");
-    const { Vault } = await import("../src/vault.js");
+    const { Wallet } = await import("../src/wallet.js");
     const { startLocalServer } = await import("../src/serve.js");
     const identity = await loadFromHost();
     const dir = process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR;
-    const vault = new Vault({ identity, ...(dir ? { dir } : {}) });
+    const wallet = new Wallet({ identity, ...(dir ? { dir } : {}) });
     const srv = startLocalServer({
-        vault,
+        vault: wallet,
         onAdd: (name) => console.log(`✓ encrypted: ${name}`),
     });
-    console.log(`kern form server at ${srv.url}`);
+    console.log(`kern wallet at ${srv.url}`);
     console.log(`Open ${srv.url}/add?name=YOUR_SECRET to add a credential`);
 }
 
@@ -142,8 +127,28 @@ async function cmdSecret(sub: string | undefined, rest: string[]) {
     process.exit(1);
 }
 
+async function cmdFetch(rest: string[]) {
+    const secret = rest[0];
+    const url = rest[1];
+    if (!secret || !url) {
+        console.error("usage: kern fetch SECRET URL [--method METHOD] [--body BODY]");
+        process.exit(1);
+    }
+    const id = await loadIdentityFromHost();
+    const wallet = openWallet({ identity: id });
+    const methodIdx = rest.indexOf("--method");
+    const method = methodIdx >= 0 ? rest[methodIdx + 1] : "GET";
+    const bodyIdx = rest.indexOf("--body");
+    const body = bodyIdx >= 0 ? rest[bodyIdx + 1] : undefined;
+    const resp = await wallet.fetch(secret, url, { method, body });
+    const text = await resp.text();
+    process.stdout.write(text);
+    if (!text.endsWith("\n")) process.stdout.write("\n");
+    process.exit(resp.ok ? 0 : 1);
+}
+
 function cmdRecipients() {
-    const dir = process.env.KORN_VAULT_DIR ?? "./secrets";
+    const dir = process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR ?? "./secrets";
     const file = join(dir, ".recipients");
     if (!existsSync(file)) {
         console.error(`no ${file} — create it with one age pubkey per line`);
@@ -154,7 +159,6 @@ function cmdRecipients() {
 
 async function readSecretInput(prompt: string): Promise<string> {
     process.stderr.write(prompt);
-    // for v0.1 we read a line from stdin — pipe-friendly. tty masking is a v0.2 polish.
     const decoder = new TextDecoder();
     let acc = "";
     for await (const chunk of (process.stdin as any)) {

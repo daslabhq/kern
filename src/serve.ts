@@ -1,21 +1,17 @@
 // kern serve — local HTTP server for secure credential capture.
-//
-// Serves a minimal form at /add?name=<secret_name> where the user
-// pastes credentials. The value goes directly into the vault — never
-// through the LLM or MCP client.
-//
-// Used by URL-mode elicitation: the MCP server returns
-// http://localhost:<port>/add?name=github_token and the MCP client
-// opens the user's browser.
 
 import { Vault } from "./vault.js";
 
-const FORM_HTML = (name: string, port: number) => `<!DOCTYPE html>
+function esc(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+const FORM_HTML = (name: string) => `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width">
-  <title>kern — add ${name}</title>
+  <title>kern — ${esc(name)}</title>
   <style>
     * { margin: 0; box-sizing: border-box; }
     body { font-family: -apple-system, system-ui, sans-serif; background: #0a0a0a; color: #e8e8e8; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
@@ -34,15 +30,15 @@ const FORM_HTML = (name: string, port: number) => `<!DOCTYPE html>
 <body>
   <div class="card" id="form-view">
     <h1>kern</h1>
-    <div class="name">${name}</div>
-    <form id="f">
+    <div class="name">${esc(name)}</div>
+    <form id="f" data-name="${esc(name)}">
       <textarea id="val" placeholder="Paste your credential here" autofocus></textarea>
       <button type="submit">Encrypt &amp; Store</button>
     </form>
   </div>
   <div class="card done" id="done-view" style="display:none">
     <div class="check">&#10003;</div>
-    <div class="name">${name}</div>
+    <div class="name">${esc(name)}</div>
     <p>Encrypted and stored. You can close this tab.</p>
   </div>
   <script>
@@ -53,7 +49,7 @@ const FORM_HTML = (name: string, port: number) => `<!DOCTYPE html>
       const resp = await fetch("/api/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "${name}", value: val }),
+        body: JSON.stringify({ name: document.getElementById("f").dataset.name, value: val }),
       });
       if (resp.ok) {
         document.getElementById("form-view").style.display = "none";
@@ -88,7 +84,7 @@ export function startLocalServer(opts: ServeOptions): LocalServer {
       if (url.pathname === "/add" && req.method === "GET") {
         const name = url.searchParams.get("name");
         if (!name) return new Response("Missing ?name=", { status: 400 });
-        return new Response(FORM_HTML(name, port), {
+        return new Response(FORM_HTML(name), {
           headers: { "Content-Type": "text/html" },
         });
       }

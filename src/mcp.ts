@@ -1,21 +1,16 @@
 // kern MCP server — stdio transport + embedded local HTTP server.
 //
 // Tools:
-//   kern_status    — vault health (secret count, recipient count)
-//   kern_list      — list secret names (no values)
-//   kern_add       — add a secret via URL-mode elicitation (browser form)
-//   kern_rotate    — rotate a secret via URL-mode elicitation
-//   kern_remove    — remove a secret
+//   kern_status    — wallet health (credential count, recipient count)
+//   kern_list      — list credential names (no values)
+//   kern_fetch     — proxy HTTP request (credential stays in wallet)
+//   kern_add       — add a credential via browser form (never through LLM)
+//   kern_rotate    — rotate a credential via browser form
+//   kern_remove    — remove a credential
 //   kern_recipients — list recipients (public keys)
-//
-// Credential capture uses MCP URL-mode elicitation:
-//   1. kern returns a localhost URL
-//   2. MCP client opens the user's browser
-//   3. User pastes credential into kern's local form
-//   4. Value goes vault → encrypted. Never through the LLM.
 
 import { loadFromHost } from "./identity.js";
-import { Vault } from "./vault.js";
+import { Wallet } from "./wallet.js";
 import { startLocalServer, type LocalServer } from "./serve.js";
 
 interface Tool {
@@ -30,14 +25,14 @@ type RespondFn = (id: string | number | undefined, result: any) => void;
 export async function startMcpServer() {
   const identity = await loadFromHost();
   const dir = process.env.KERN_VAULT_DIR ?? process.env.KORN_VAULT_DIR;
-  const vault = new Vault({ identity, ...(dir ? { dir } : {}) });
+  const wallet = new Wallet({ identity, ...(dir ? { dir } : {}) });
 
   let server: LocalServer | null = null;
 
   function ensureServer(): LocalServer {
     if (!server) {
       server = startLocalServer({
-        vault,
+        vault: wallet,
         onAdd: (name) => process.stderr.write(`[kern] encrypted: ${name}\n`),
       });
       process.stderr.write(`[kern] local server at ${server.url}\n`);
@@ -48,15 +43,15 @@ export async function startMcpServer() {
   const tools: Tool[] = [
     {
       name: "kern_status",
-      description: "Vault health: how many secrets, how many recipients, vault directory.",
+      description: "Wallet health: how many credentials, how many recipients, vault directory.",
       inputSchema: { type: "object", properties: {} },
       handler: async (_args, respond) => {
-        const secrets = vault.list();
+        const secrets = wallet.list();
         let recipients: string[] = [];
         try {
           const { readFileSync } = await import("fs");
           const { join } = await import("path");
-          const r = readFileSync(join(vault.dir, ".recipients"), "utf8");
+          const r = readFileSync(join(wallet.dir, ".recipients"), "utf8");
           recipients = r.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
         } catch {}
         respond(undefined, {
@@ -64,32 +59,66 @@ export async function startMcpServer() {
             secrets: secrets.length,
             recipients: recipients.length,
             names: secrets,
-            dir: vault.dir,
+            dir: wallet.dir,
           }, null, 2) }],
         });
       },
     },
     {
       name: "kern_list",
-      description: "List all secret names in the vault. Returns names only — never values.",
+      description: "List all credential names in the wallet. Returns names only — never values.",
       inputSchema: { type: "object", properties: {} },
       handler: async (_args, respond) => {
-        const secrets = vault.list();
+        const secrets = wallet.list();
         respond(undefined, {
           content: [{ type: "text", text: secrets.length
-            ? `${secrets.length} secrets: ${secrets.join(", ")}`
-            : "Vault is empty. Use kern_add to add secrets." }],
+            ? `${secrets.length} credentials: ${secrets.join(", ")}`
+            : "Wallet is empty. Use kern_add to add credentials." }],
         });
       },
     },
     {
+      name: "kern_fetch",
+      description: "Make an authenticated HTTP request. The credential stays in the wallet — you get the response without seeing the key.",
+      inputSchema: {
+        type: "object",
+        required: ["secret", "url"],
+        properties: {
+          secret: { type: "string", description: "Credential name (e.g. tokens/github)" },
+          url: { type: "string", description: "Full URL to request" },
+          method: { type: "string", description: "HTTP method (default: GET)" },
+          body: { type: "string", description: "Request body for POST/PUT" },
+        },
+      },
+      handler: async (args, respond) => {
+        const { secret, url, method, body } = args as {
+          secret: string; url: string; method?: string; body?: string;
+        };
+        try {
+          const resp = await wallet.fetch(secret, url, {
+            method: method ?? "GET",
+            body: body ?? undefined,
+          });
+          const text = await resp.text();
+          respond(undefined, {
+            content: [{ type: "text", text: `${resp.status} ${resp.statusText}\n\n${text}` }],
+          });
+        } catch (e: any) {
+          respond(undefined, {
+            content: [{ type: "text", text: `Error: ${e.message}` }],
+            isError: true,
+          });
+        }
+      },
+    },
+    {
       name: "kern_add",
-      description: "Add a secret to the vault. Opens a secure browser form where the user pastes the credential. The value never passes through the LLM.",
+      description: "Add a credential to the wallet. Opens a secure browser form where the user pastes the value. It never passes through the LLM.",
       inputSchema: {
         type: "object",
         required: ["name"],
         properties: {
-          name: { type: "string", description: "Secret name (e.g. github_token, openai_key)" },
+          name: { type: "string", description: "Credential name (e.g. tokens/github, testing/openai)" },
         },
       },
       handler: async (args, respond) => {
@@ -98,7 +127,7 @@ export async function startMcpServer() {
         const url = `${srv.url}/add?name=${encodeURIComponent(name)}`;
 
         respond(undefined, {
-          content: [{ type: "text", text: `Opening secure form for "${name}". Paste your credential in the browser — it goes directly to the vault, never through this conversation.` }],
+          content: [{ type: "text", text: `Opening secure form for "${name}". Paste your credential in the browser — it goes directly to the wallet, never through this conversation.` }],
           _meta: {
             elicitation: {
               mode: "url",
@@ -109,7 +138,6 @@ export async function startMcpServer() {
           },
         });
 
-        // Wait for the user to submit the form
         try {
           await fetch(`${srv.url}/api/wait?name=${encodeURIComponent(name)}`);
         } catch {}
@@ -117,20 +145,20 @@ export async function startMcpServer() {
     },
     {
       name: "kern_rotate",
-      description: "Rotate a secret — opens browser form for the new value. The old value is replaced.",
+      description: "Rotate a credential — opens browser form for the new value. The old value is replaced.",
       inputSchema: {
         type: "object",
         required: ["name"],
         properties: {
-          name: { type: "string", description: "Secret name to rotate" },
+          name: { type: "string", description: "Credential name to rotate" },
         },
       },
       handler: async (args, respond) => {
         const name = args.name as string;
-        const secrets = vault.list();
+        const secrets = wallet.list();
         if (!secrets.includes(name)) {
           respond(undefined, {
-            content: [{ type: "text", text: `Secret "${name}" not found. Available: ${secrets.join(", ")}` }],
+            content: [{ type: "text", text: `Credential "${name}" not found. Available: ${secrets.join(", ")}` }],
           });
           return;
         }
@@ -156,20 +184,20 @@ export async function startMcpServer() {
     },
     {
       name: "kern_remove",
-      description: "Remove a secret from the vault.",
+      description: "Remove a credential from the wallet.",
       inputSchema: {
         type: "object",
         required: ["name"],
         properties: {
-          name: { type: "string", description: "Secret name to remove" },
+          name: { type: "string", description: "Credential name to remove" },
         },
       },
       handler: async (args, respond) => {
         const name = args.name as string;
         try {
-          vault.delete(name);
+          wallet.delete(name);
           respond(undefined, {
-            content: [{ type: "text", text: `Removed "${name}" from vault.` }],
+            content: [{ type: "text", text: `Removed "${name}" from wallet.` }],
           });
         } catch (e: any) {
           respond(undefined, {
@@ -181,13 +209,13 @@ export async function startMcpServer() {
     },
     {
       name: "kern_recipients",
-      description: "List vault recipients (public keys that can decrypt). No secret values exposed.",
+      description: "List wallet recipients (public keys that can decrypt). No credential values exposed.",
       inputSchema: { type: "object", properties: {} },
       handler: async (_args, respond) => {
         try {
           const { readFileSync } = await import("fs");
           const { join } = await import("path");
-          const raw = readFileSync(join(vault.dir, ".recipients"), "utf8");
+          const raw = readFileSync(join(wallet.dir, ".recipients"), "utf8");
           const keys = raw.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
           respond(undefined, {
             content: [{ type: "text", text: `${keys.length} recipients:\n${keys.map(k => `  ${k}`).join("\n")}` }],
@@ -201,7 +229,6 @@ export async function startMcpServer() {
     },
   ];
 
-  // MCP stdio transport
   const toolDefs = tools.map(t => ({
     name: t.name,
     description: t.description,

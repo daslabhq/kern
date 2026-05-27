@@ -1,7 +1,7 @@
 {
   "name": "@daslab/kern",
   "version": "0.2.0",
-  "description": "The agent credential manager. Agents use APIs without ever seeing the keys.",
+  "description": "The agent wallet. Hold credentials — agents use them without seeing them.",
   "type": "module",
   "main": "src/index.ts",
   "module": "src/index.ts",
@@ -9,6 +9,7 @@
   "exports": {
     ".":          "./src/index.ts",
     "./vault":    "./src/vault.ts",
+    "./wallet":   "./src/wallet.ts",
     "./identity": "./src/identity.ts",
     "./serve":    "./src/serve.ts",
     "./mcp":      "./src/mcp.ts"
@@ -17,7 +18,7 @@
     "kern": "./bin/kern.ts"
   },
   "files": ["src", "bin", "README.md", "LICENSE"],
-  "keywords": ["kern", "agent", "secrets", "age", "vault", "identity", "encryption", "mcp", "proxy", "credentials"],
+  "keywords": ["kern", "agent", "wallet", "secrets", "age", "vault", "identity", "encryption", "mcp", "proxy", "credentials"],
   "license": "MIT",
   "dependencies": {
     "age-encryption": "^0.3.0"
@@ -26,6 +27,6 @@
     "typescript": "^5.4.0"
   },
   "scripts": {
-    "test": "bun test/smoke.ts"
+    "test": "bun test ./test/smoke.ts ./test/wallet.test.ts ./test/serve.test.ts"
   }
 }

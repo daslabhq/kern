@@ -1,8 +1,6 @@
 # kern
 
-[![tests](https://github.com/daslabhq/kern/actions/workflows/test.yml/badge.svg)](https://github.com/daslabhq/kern/actions/workflows/test.yml)
-
-Encrypted secrets in git. Scoped by folder. Managed by agents.
+The agent wallet. Hold credentials — agents use them without seeing them.
 
 ```bash
 npm install @daslab/kern
@@ -10,80 +8,54 @@ npm install @daslab/kern
 
 ## The problem
 
-91 API keys in a `.env` file. Shared over Slack. Copied between machines. Half of them are test keys that shouldn't be in production. New teammate joins — "ask the lead dev for the keys." Rotate one key — update it in 7 places, miss 2.
+Agents need API keys. Today those live in env vars — plaintext, unscoped, every process sees everything. The agent calling Stripe has your production secret key in its context window. Every credential is one prompt injection away from exfiltration.
 
-## How kern solves it
+## How kern works
 
-Secrets are age-encrypted files organized in folders. Each folder has a `.recipients` file that controls who can decrypt. Commit the whole thing to git — it's useless without a private key.
+Kern is a credential wallet backed by [age encryption](https://age-encryption.org/). Credentials are encrypted files, organized in folders, committed to git. The wallet holds them. Agents use them two ways:
 
-```
-secrets/
-├── .recipients                  # everyone (Alice + Production + CI)
-├── .nodes                       # who's who
-│
-├── infra/                       # prod runtime
-│   ├── database_url.age
-│   ├── redis_url.age
-│   ├── jwt_secret.age
-│   └── r2.age                   # { access_key_id, secret, account_id }
-│
-├── oauth/                       # prod OAuth app credentials
-│   ├── github.age               # { client_id, client_secret, app_id }
-│   ├── google.age
-│   └── slack.age
-│
-├── testing/                     # local dev + CI only
-│   ├── .recipients              # Alice + CI (NOT production server)
-│   ├── llm.age                  # { anthropic, openai, gemini }
-│   ├── elevenlabs.age
-│   ├── stripe_test.age
-│   └── ci_demo.age
-│
-└── deploy/                      # CI/CD only
-    ├── .recipients              # Alice + CI
-    ├── apple_signing.age
-    └── tauri_signing.age
+**Proxy** — the credential never leaves the wallet. The agent asks kern to make the API call; kern injects the auth and returns the response.
+
+```typescript
+import { openWallet, loadIdentityFromHost } from "@daslab/kern";
+
+const wallet = openWallet({ identity: await loadIdentityFromHost() });
+
+// wallet injects the Bearer token — agent never sees it
+const resp = await wallet.fetch("tokens/github", "https://api.github.com/user/repos");
+const repos = await resp.json();
 ```
 
-Your production server only decrypts `infra/` and `oauth/` — it never sees test keys or deploy secrets. CI decrypts `testing/` and `deploy/` but never touches production database credentials. Each node sees only what it should.
+**Direct** — for SDKs and non-HTTP protocols where you need the raw credential.
+
+```typescript
+const key = await wallet.get("tokens/openai");
+const client = new OpenAI({ apiKey: key });
+```
+
+Both read from the same encrypted vault. You choose per credential.
 
 ## Quick start
 
 ```bash
-# create your identity
+# create your identity (age keypair)
 kern identity init
 
 # create the vault
 mkdir -p secrets
 kern identity pubkey >> secrets/.recipients
 
-# add your first secret
-kern secret add github_token
+# add credentials
+kern secret add tokens/github
+kern secret add tokens/openai
 
-# group related credentials
-mkdir -p secrets/testing
-cp secrets/.recipients secrets/testing/.recipients
-kern secret add testing/llm    # { "anthropic": "sk-...", "openai": "sk-..." }
+# proxy request — credential stays in the wallet
+kern fetch tokens/github https://api.github.com/user
 ```
 
-## Use from code
+## Agent integration (MCP)
 
-```typescript
-import { loadIdentityFromHost, openVault } from "@daslab/kern";
-
-const vault = openVault({ identity: await loadIdentityFromHost() });
-
-// simple value
-const dbUrl = await vault.get("infra/database_url");
-
-// grouped credentials
-const llm = JSON.parse(await vault.get("testing/llm"));
-const anthropicKey = llm.anthropic;
-```
-
-## Use from Claude Code
-
-Add kern as an MCP server:
+Add kern as an MCP server. The agent talks to the wallet — never holds the keys.
 
 ```json
 {
@@ -97,65 +69,92 @@ Add kern as an MCP server:
 ```
 
 ```
-You: "Set up secrets for this project — I need GitHub OAuth,
-      an OpenAI key for testing, and Stripe test credentials"
+Agent: "Fetch my GitHub repos"
 
-Claude → kern_add("oauth/github")
-  → browser opens kern's local form
-  → you paste client_id + client_secret
-  → encrypted into secrets/oauth/github.age
+→ kern_fetch(secret: "tokens/github", url: "https://api.github.com/user/repos")
+→ wallet decrypts tokens/github, injects Bearer token, makes the request
+→ returns JSON response to agent
 
-Claude → kern_add("testing/openai")
-  → same flow
-  → encrypted into secrets/testing/openai.age
-
-Claude → kern_add("testing/stripe")
-  → same flow
-
-"3 secrets added. testing/ is scoped to Alice + CI.
- oauth/ is available to all nodes."
+Agent got the data. Never saw the token.
 ```
 
-Credentials go: browser form → kern → encrypted vault. The LLM never sees them.
+```
+Agent: "Add my Stripe test key"
+
+→ kern_add(name: "testing/stripe")
+→ browser opens kern's local form
+→ you paste the key
+→ encrypted into secrets/testing/stripe.age
+
+Credential went: browser → wallet → encrypted file. Agent never saw it.
+```
+
+### MCP tools
+
+| Tool | Mode | Description |
+|------|------|-------------|
+| `kern_fetch` | proxy | Authenticated HTTP request. Credential stays in the wallet. |
+| `kern_get` | direct | Decrypt and return a credential value. |
+| `kern_add` | — | Add a credential via browser form. Agent never sees it. |
+| `kern_rotate` | — | Replace a credential via browser form. |
+| `kern_remove` | — | Delete a credential. |
+| `kern_list` | — | List credential names (never values). |
+| `kern_status` | — | Wallet health check. |
+
+## Vault layout
+
+Credentials are age-encrypted files in folders. Each folder has a `.recipients` file controlling who can decrypt. Commit the whole thing to git — it's ciphertext without the private key.
+
+```
+secrets/
+├── .recipients              # all nodes
+│
+├── tokens/                  # API credentials
+│   ├── github.age
+│   ├── openai.age
+│   └── stripe.age
+│
+├── infra/                   # production infrastructure
+│   ├── database_url.age
+│   └── redis_url.age
+│
+└── testing/                 # dev + CI only
+    ├── .recipients          # narrower: Alice + CI (not prod)
+    ├── stripe_test.age
+    └── llm.age
+```
+
+### Scoping rules
+
+- Each folder can have its own `.recipients`
+- No `.recipients`? Inherits from parent
+- Prod server decrypts `tokens/` and `infra/` — never sees test keys
+- CI decrypts `testing/` — never touches prod credentials
 
 ## Nodes
 
-A node is any machine with an age keypair — your laptop, CI, a server. Add a `.nodes` file to track them:
-
-```
-# secrets/.nodes
-age1abc...  Alice          owner
-age1def...  Production         server
-age1ghi...  GitHub CI      ci
-```
+A node is any machine with an age keypair — your laptop, CI, a production server.
 
 ### Add a teammate
 
 ```bash
-# Bob generates his keypair
+# Bob generates his identity
 kern identity init && kern identity pubkey
 # → age1xyz...
 
-# You add him to the folders he needs
 echo "age1xyz..." >> secrets/.recipients
 echo "age1xyz..." >> secrets/testing/.recipients
 kern secret rewrap
 git commit -am "add Bob"
-
-# Bob clones, everything works
 ```
 
 ### Add CI
 
 ```bash
-# generate a keypair for CI
 kern identity init --save /tmp/ci-key
-# add to the folders CI needs
 echo "$(kern identity pubkey)" >> secrets/.recipients
 echo "$(kern identity pubkey)" >> secrets/testing/.recipients
-echo "$(kern identity pubkey)" >> secrets/deploy/.recipients
 kern secret rewrap
-# set the one CI secret
 gh secret set KERN_AGE_KEY < /tmp/ci-key
 rm /tmp/ci-key
 ```
@@ -165,37 +164,12 @@ One secret in CI. Everything else decrypts from git.
 ### Revoke access
 
 ```bash
-# remove Bob's key from all .recipients files
 kern recipients remove age1xyz...
 kern secret rewrap
-# rotate any secrets Bob had access to
-kern secret rotate testing/openai
+kern secret rotate tokens/github  # rotate what they had access to
 ```
 
-## Scoping rules
-
-- Each folder can have its own `.recipients`
-- A secret is encrypted to the `.recipients` in its folder
-- If no `.recipients` in a folder, it inherits from the parent
-- Root `.recipients` is the default for everything
-
-This means:
-- Secrets in `infra/` → encrypted to root recipients (everyone)
-- Secrets in `testing/` → encrypted to testing's recipients (dev + CI, not prod)
-- Secrets in `deploy/` → encrypted to deploy's recipients (dev + CI)
-
-No duplication. No complex config. Just folders and recipient files.
-
-## Local form server
-
-```bash
-kern serve
-# → http://localhost:9271
-```
-
-Dashboard shows all secrets (names only), all nodes, folder structure. Add, edit, rotate secrets through the browser. Same server that MCP elicitation uses.
-
-## CLI reference
+## CLI
 
 ```bash
 kern identity init [--save PATH]   # create age keypair
@@ -208,11 +182,15 @@ kern secret rotate [FOLDER/]NAME   # replace a value
 kern secret delete [FOLDER/]NAME   # remove
 kern secret rewrap                 # re-encrypt for current recipients
 
-kern recipients list               # show all nodes
-kern recipients remove KEY         # remove a node from all folders
+kern fetch SECRET URL [OPTIONS]    # proxy request (credential stays in wallet)
+  --method POST                    # HTTP method (default GET)
+  --body '{"key": "val"}'          # request body
+
+kern recipients list               # show recipients
+kern recipients remove KEY         # remove from all folders
 
 kern mcp                           # start MCP server
-kern serve                         # start local form + dashboard
+kern serve                         # start local credential form
 ```
 
 ## Environment
@@ -224,34 +202,15 @@ kern serve                         # start local form + dashboard
 
 ## How it compares
 
-| | .env | SOPS | Vault | 1Password | kern |
-|---|---|---|---|---|---|
-| Encrypted in git | no | yes | no | no | yes |
-| Folder scoping | no | no | yes | yes | yes |
-| No server needed | yes | yes | no | no | yes |
-| TypeScript SDK | no | no | no | no | yes |
-| Agent integration (MCP) | no | no | no | no | yes |
-| Grouped credentials | no | yes | yes | yes | yes |
-
-## Building on kern
-
-kern is the encryption + scoping primitive. Build governance on top:
-
-```typescript
-import { loadIdentityFromHost, openVault } from "@daslab/kern";
-
-// your platform wraps kern with policy
-const vault = openVault({ identity: await loadIdentityFromHost() });
-
-// kern handles: encrypted storage, folder scoping, recipients
-const creds = await vault.get("oauth/github");
-
-// you add: RBAC, approval flows, audit trails, asset-level permissions
-await checkPolicy(user, "oauth/github", "read");
-await auditLog(user, "oauth/github", "read");
-```
-
-The folder structure maps naturally to governance scopes — `testing/` is one access tier, `deploy/` is another, `infra/` is another. The primitive is simple; the policy layer is yours.
+| | .env | SOPS | Vault | kern |
+|---|---|---|---|---|
+| Encrypted at rest | | ✓ | ✓ | ✓ |
+| Lives in git | | ✓ | | ✓ |
+| Folder scoping | | | ✓ | ✓ |
+| No server | ✓ | ✓ | | ✓ |
+| Proxy mode | | | | ✓ |
+| Agent-native (MCP) | | | | ✓ |
+| TypeScript SDK | | | | ✓ |
 
 ## License
 
