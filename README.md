@@ -8,7 +8,7 @@ The agent wallet. Hold credentials — agents use them without seeing them.
 npm install @daslabhq/kern
 ```
 
-Requires [Bun](https://bun.sh).
+Works with Node.js 18+ and [Bun](https://bun.sh). CLI requires Bun.
 
 ## The problem
 
