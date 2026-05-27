@@ -1,5 +1,5 @@
 {
-  "name": "@daslab/kern",
+  "name": "@daslabhq/kern",
   "version": "0.2.0",
   "description": "The agent wallet. Hold credentials — agents use them without seeing them.",
   "type": "module",

@@ -5,7 +5,7 @@
 The agent wallet. Hold credentials — agents use them without seeing them.
 
 ```bash
-npm install @daslab/kern
+npm install @daslabhq/kern
 ```
 
 Requires [Bun](https://bun.sh).
@@ -21,7 +21,7 @@ Kern is a credential wallet backed by [age encryption](https://age-encryption.or
 **Proxy** — the credential never leaves the wallet. The agent asks kern to make the API call; kern injects the auth and returns the response.
 
 ```typescript
-import { openWallet, loadIdentityFromHost } from "@daslab/kern";
+import { openWallet, loadIdentityFromHost } from "@daslabhq/kern";
 
 const wallet = openWallet({ identity: await loadIdentityFromHost() });
 
@@ -66,7 +66,7 @@ Add kern as an MCP server. The agent talks to the wallet — never holds the key
   "mcpServers": {
     "kern": {
       "command": "npx",
-      "args": ["@daslab/kern", "mcp"]
+      "args": ["@daslabhq/kern", "mcp"]
     }
   }
 }

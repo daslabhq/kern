@@ -1,7 +1,7 @@
-// @daslab/kern/env — side-effect import that hydrates process.env from the vault.
+// @daslabhq/kern/env — side-effect import that hydrates process.env from the vault.
 //
 // Usage:
-//   import "@daslab/kern/env";
+//   import "@daslabhq/kern/env";
 //
 // Must be the first import in your entry point. Discovers identity from
 // KERN_AGE_KEY env var or ~/.kern/key, opens the vault at KERN_VAULT_DIR
