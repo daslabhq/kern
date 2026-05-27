@@ -121,7 +121,11 @@ async function cmdSecret(sub: string | undefined, rest: string[]) {
     }
     if (sub === "rewrap") {
         const r = await vault.rewrap();
-        console.log(`✓ rewrapped ${r.rewrapped} secrets (${r.skipped} skipped)`);
+        console.log(`✓ rewrapped ${r.rewrapped} secrets`);
+        if (r.skipped.length) {
+            console.error(`⚠ skipped ${r.skipped.length}:`);
+            for (const s of r.skipped) console.error(`  ${s.name}: ${s.error}`);
+        }
         return;
     }
     console.error("usage: kern secret {add,get,list,rotate,delete,rewrap}");

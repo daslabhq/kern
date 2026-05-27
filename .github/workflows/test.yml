@@ -15,4 +15,5 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      - run: npx tsc --noEmit
       - run: bun test ./test/smoke.ts ./test/wallet.test.ts ./test/serve.test.ts

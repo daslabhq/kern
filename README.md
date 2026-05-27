@@ -8,6 +8,8 @@ The agent wallet. Hold credentials — agents use them without seeing them.
 npm install @daslab/kern
 ```
 
+Requires [Bun](https://bun.sh).
+
 ## The problem
 
 Agents need API keys. Today those live in env vars — plaintext, unscoped, every process sees everything. The agent calling Stripe has your production secret key in its context window. Every credential is one prompt injection away from exfiltration.
@@ -102,6 +104,7 @@ Credential went: browser → wallet → encrypted file. Agent never saw it.
 | `kern_remove` | — | Delete a credential. |
 | `kern_list` | — | List credential names (never values). |
 | `kern_status` | — | Wallet health check. |
+| `kern_recipients` | — | List recipients (public keys). |
 
 ## Vault layout
 

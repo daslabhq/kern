@@ -129,16 +129,17 @@ export class Vault {
     }
 
     /** Re-encrypt every secret to the recipients listed at each level. */
-    async rewrap(): Promise<{ rewrapped: number; skipped: number }> {
-        let rewrapped = 0, skipped = 0;
+    async rewrap(): Promise<{ rewrapped: number; skipped: { name: string; error: string }[] }> {
+        let rewrapped = 0;
+        const skipped: { name: string; error: string }[] = [];
         for (const name of this.list()) {
             try {
                 const bytes = await this.getBytes(name);
                 this.cache.delete(name);
                 await this.put(name, bytes);
                 rewrapped++;
-            } catch (e) {
-                skipped++;
+            } catch (e: any) {
+                skipped.push({ name, error: e?.message || String(e) });
             }
         }
         return { rewrapped, skipped };

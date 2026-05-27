@@ -125,7 +125,7 @@ test("rewrap: add a recipient, rewrap, new recipient now decrypts existing secre
     // rewrap from a's perspective
     const r = await vaultA.rewrap();
     expect(r.rewrapped).toBe(2);
-    expect(r.skipped).toBe(0);
+    expect(r.skipped).toEqual([]);
 
     // now b can read
     expect(await vaultB.get("k1")).toBe("v1");
