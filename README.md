@@ -4,6 +4,10 @@
 
 The agent wallet. Hold credentials — agents use them without seeing them.
 
+This repository is also the canonical home of the [Kern specs](spec/README.md)
+— identity, vault, capabilities, signing, audit log — which any Kern
+implementation follows; this package is the TypeScript one.
+
 ```bash
 npm install @daslabhq/kern
 ```
