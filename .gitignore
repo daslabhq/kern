@@ -3,3 +3,4 @@ dist/
 .smoke-tmp/
 .wallet-test-tmp/
 .serve-test-tmp/
+.cli-test-tmp/

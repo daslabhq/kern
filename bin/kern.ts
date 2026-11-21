@@ -217,7 +217,11 @@ async function readSecretInput(prompt: string): Promise<string> {
     return acc;
 }
 
-main().catch(e => {
+// Must be awaited. Floating, the process can exit before the command's async
+// work lands: piped stdin hits EOF, the last ref'd handle goes away, and the
+// runtime drains and exits 0 with the vault write still pending — a silent
+// no-op that reports success. Only reproduces off a TTY, i.e. only in scripts.
+await main().catch(e => {
     console.error("kern: " + (e?.message || e));
     process.exit(1);
 });

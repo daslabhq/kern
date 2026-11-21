@@ -35,7 +35,9 @@ async function hydrate() {
   const overridden: string[] = [];
 
   for (const name of names) {
-    const envName = name.toUpperCase();
+    // Nested secrets (e.g. "test/foo_api_key") use the basename as the env
+    // var — the directory is a recipient scope, not part of the name.
+    const envName = name.split("/").pop()!.toUpperCase();
     const had = !!process.env[envName];
     try {
       process.env[envName] = await vault.get(name);

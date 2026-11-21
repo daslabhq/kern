@@ -1,24 +1,70 @@
 {
   "name": "@daslabhq/kern",
-  "version": "0.2.0",
-  "description": "The agent wallet. Hold credentials — agents use them without seeing them.",
+  "version": "0.2.1",
+  "description": "The agent wallet. Hold credentials \u2014 agents use them without seeing them.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
-    ".":          { "types": "./dist/index.d.ts",    "default": "./dist/index.js" },
-    "./vault":    { "types": "./dist/vault.d.ts",    "default": "./dist/vault.js" },
-    "./wallet":   { "types": "./dist/wallet.d.ts",   "default": "./dist/wallet.js" },
-    "./identity": { "types": "./dist/identity.d.ts", "default": "./dist/identity.js" },
-    "./env":      { "types": "./dist/env.d.ts",      "default": "./dist/env.js" },
-    "./serve":    { "types": "./dist/serve.d.ts",     "default": "./dist/serve.js" },
-    "./mcp":      { "types": "./dist/mcp.d.ts",      "default": "./dist/mcp.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./vault": {
+      "types": "./dist/vault.d.ts",
+      "bun": "./src/vault.ts",
+      "default": "./dist/vault.js"
+    },
+    "./wallet": {
+      "types": "./dist/wallet.d.ts",
+      "bun": "./src/wallet.ts",
+      "default": "./dist/wallet.js"
+    },
+    "./identity": {
+      "types": "./dist/identity.d.ts",
+      "bun": "./src/identity.ts",
+      "default": "./dist/identity.js"
+    },
+    "./env": {
+      "types": "./dist/env.d.ts",
+      "bun": "./src/env.ts",
+      "default": "./dist/env.js"
+    },
+    "./serve": {
+      "types": "./dist/serve.d.ts",
+      "bun": "./src/serve.ts",
+      "default": "./dist/serve.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp.d.ts",
+      "bun": "./src/mcp.ts",
+      "default": "./dist/mcp.js"
+    }
   },
   "bin": {
     "kern": "./bin/kern.ts"
   },
-  "files": ["dist", "src", "bin", "README.md", "LICENSE"],
-  "keywords": ["kern", "agent", "wallet", "secrets", "age", "vault", "identity", "encryption", "mcp", "proxy", "credentials"],
+  "files": [
+    "dist",
+    "src",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "kern",
+    "agent",
+    "wallet",
+    "secrets",
+    "age",
+    "vault",
+    "identity",
+    "encryption",
+    "mcp",
+    "proxy",
+    "credentials"
+  ],
   "license": "MIT",
   "dependencies": {
     "age-encryption": "^0.3.0"
@@ -30,6 +76,6 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test": "bun test ./test/smoke.ts ./test/wallet.test.ts ./test/serve.test.ts"
+    "test": "bun test ./test/smoke.ts ./test/wallet.test.ts ./test/serve.test.ts ./test/cli.test.ts"
   }
 }
