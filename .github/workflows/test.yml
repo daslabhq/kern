@@ -15,5 +15,5 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-      - run: tsc
+      - run: bun run build
       - run: bun test ./test/smoke.ts ./test/wallet.test.ts ./test/serve.test.ts ./test/cli.test.ts
